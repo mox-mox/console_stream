@@ -26,6 +26,8 @@ set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG}   -std=c++11 -Wall -Wextra
 
 
 add_executable(console_stream_test ${SRCS})
+target_compile_options(console_stream_test PUBLIC -std=c++17 -Wall -Wextra -Wpedantic -Werror -Wfatal-errors)
 target_link_libraries(console_stream_test ${LIBS} )
 target_include_directories(console_stream_test PUBLIC ${INCDIRS})
 target_include_directories(console_stream_test SYSTEM PUBLIC ${INCDIRS_SYS})
+target_compile_definitions(console_stream_test PUBLIC LOGGING_LEVEL=0 USE_COLOUR_STREAMS=1)

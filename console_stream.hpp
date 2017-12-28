@@ -22,32 +22,10 @@
 #pragma once
 
 #ifndef LOGGING_LEVEL
-	#pragma message("warning:To use the notify stream, set the notification level.\n" \
-	"	* Use -DLOGGING_LEVEL=0 to disable all notification output\n"                  \
-	"	* Use -DLOGGING_LEVEL=1 to enable only critical output\n"                      \
-	"	* Use -DLOGGING_LEVEL=2 to enable normal and critical output\n"                \
-	"	* Use -DLOGGING_LEVEL=3 to enable all output.\n" )
-	#define LOGGING_LEVEL 0
+#define LOGGING_LEVEL 3
 #endif
 
-#define USE_DEBUG_STREAM false
-#define USE_LOGGER_STREAM false
-#define USE_ERROR_STREAM false
 
-#if LOGGING_LEVEL >= 1
-	#undef USE_ERROR_STREAM
-	#define USE_ERROR_STREAM true
-#endif
-
-#if LOGGING_LEVEL >= 2
-	#undef USE_LOGGER_STREAM
-	#define USE_LOGGER_STREAM true
-#endif
-
-#if LOGGING_LEVEL >= 3
-	#undef USE_DEBUG_STREAM
-	#define USE_DEBUG_STREAM true
-#endif
 
 #include <iostream>
 #include <sstream>
@@ -78,8 +56,14 @@
  * The number in square brackets will be the current value of the milliseconds counter.
  *
  */
-template<class CharT, class Traits = std::char_traits<CharT>, bool active=true>
-class Console_stream: public std::ostream
+class Console_stream_base
+{
+	public:
+	inline static int logging_level = LOGGING_LEVEL;
+};
+
+template<class CharT, class Traits = std::char_traits<CharT>, int min_logging_level=3>
+class Console_stream: public Console_stream_base, public std::ostream
 {
 	private:
 		/**
@@ -102,27 +86,26 @@ class Console_stream: public std::ostream
 				//
 				virtual int sync()
 				{
-					std::string line;
-					std::stringstream ss(str());
-					getline(ss, line, '\n');
-					//output<<"["<<std::setw(10)<<
-					//    std::chrono::duration_cast < std::chrono::seconds > (std::chrono::steady_clock::now().time_since_epoch()).count()<<
-					//    "] "<<prefix<<line<<'\n';
-					std::time_t t = std::time(nullptr);
-					output<<"["<<std::put_time(std::localtime(&t), "%F/%T")<<"] "<<prefix<<line<<'\n';
-					while (getline(ss, line, '\n'))
+					if(logging_level >= min_logging_level)
 					{
-						output<<"                      "<<prefix<<line<<'\n';
+						std::string line;
+						std::stringstream ss(str());
+						getline(ss, line, '\n');
+						std::time_t t = std::time(nullptr);
+						output<<"["<<std::put_time(std::localtime(&t), "%F/%T")<<"] "<<prefix<<line<<'\n';
+						while (getline(ss, line, '\n'))
+						{
+							output<<"                      "<<prefix<<line<<'\n';
+						}
+
+						output<<postfix;
+						output.flush();
 					}
 
-					output<<postfix;
 					str("");
-					output.flush();
 					return 0;
 				}
-		};
-
-		stream_buf buffer;
+		} buffer;
 	public:
 		// \x1b[37m is an ANSI-escape sequence, see https://en.wikipedia.org/wiki/ANSI_escape_code
 		Console_stream(std::string prefix, std::ostream& str = std::cout, std::string postfix = "\x1b[37m") :
@@ -131,54 +114,43 @@ class Console_stream: public std::ostream
 		}
 };
 
-
-/**
- * Partial specialisation that disables the output
- */
-template<class CharT, class Traits>
-class Console_stream<CharT,Traits, false>: public std::ostream
+struct _SetLogLevel
 {
-	public:
-		Console_stream(std::string prefix, std::ostream& str = std::cout, std::string postfix = "")
-		{
-			(void) prefix;
-			(void) str;
-			(void) postfix;
-		}
-
-		/**
-		 * The function handling formatting functions like std::endl.
-		 * This function is actually needed and has to be inlined to allow the compiler to completely optimise it away.
-		 */
-		__attribute__((always_inline)) inline __ostream_type& operator<<(__ostream_type& (*__pf)(__ostream_type&))
-		{
-			(void) __pf;
-			return *this;
-		}
-
-		/**
-		 * The function handling normal data insertion into the stream.
-		 * These functions are actually needed and have to be inlined to allow the compiler to completely optimise them away.
-		 */
-		template<typename T>
-		__attribute__((always_inline)) inline Console_stream<CharT, Traits, false>& operator<<(T value)
-		{
-			(void) value;
-			return *this;
-		}
+	int level;
 };
 
+/**
+ *  @brief  Manipulator for @c setf.
+ *  @param  __base  A numeric base.
+ *
+ *  Sent to a stream object, this manipulator changes the
+ *  @c ios_base::basefield flags to @c oct, @c dec, or @c hex when @a base
+ *  is 8, 10, or 16, accordingly, and to 0 if @a __base is any other value.
+ */
+inline _SetLogLevel setloglevel(int level)
+{
+	return { level };
+}
 
-extern Console_stream<char, std::char_traits<char>, USE_DEBUG_STREAM> debug;
-extern Console_stream<char, std::char_traits<char>, USE_LOGGER_STREAM> logger;
-extern Console_stream<char, std::char_traits<char>, USE_ERROR_STREAM> error;
+template<class CharT, class Traits, int min_logging_level>
+inline Console_stream<CharT, Traits, min_logging_level>& operator<<(Console_stream<CharT, Traits, min_logging_level>&os, _SetLogLevel f)
+{
+	os.logging_level = f.level;
+
+	return os;
+}
+
+
+extern Console_stream<char, std::char_traits<char>, 3> debug;
+extern Console_stream<char, std::char_traits<char>, 2> logger;
+extern Console_stream<char, std::char_traits<char>, 1> error;
 
 #if defined(USE_COLOUR_STREAMS) && USE_COLOUR_STREAMS != 0
-	extern Console_stream<char, std::char_traits<char>, true> red_stream;
-	extern Console_stream<char, std::char_traits<char>, true> green_stream;
-	extern Console_stream<char, std::char_traits<char>, true> yellow_stream;
-	extern Console_stream<char, std::char_traits<char>, true> blue_stream;
-	extern Console_stream<char, std::char_traits<char>, true> magenta_stream;
-	extern Console_stream<char, std::char_traits<char>, true> cyan_stream;
-	extern Console_stream<char, std::char_traits<char>, true> white_stream;
+	extern Console_stream<char, std::char_traits<char>, 0> red_stream;
+	extern Console_stream<char, std::char_traits<char>, 0> green_stream;
+	extern Console_stream<char, std::char_traits<char>, 0> yellow_stream;
+	extern Console_stream<char, std::char_traits<char>, 0> blue_stream;
+	extern Console_stream<char, std::char_traits<char>, 0> magenta_stream;
+	extern Console_stream<char, std::char_traits<char>, 0> cyan_stream;
+	extern Console_stream<char, std::char_traits<char>, 0> white_stream;
 #endif
